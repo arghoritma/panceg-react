@@ -1,0 +1,33 @@
+[Unit]
+Description=Panceg Hono and React application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=panceg
+Group=panceg
+WorkingDirectory=/srv/panceg/app
+EnvironmentFile=/etc/panceg/panceg.env
+Environment=NODE_ENV=production
+
+ExecStart=/usr/local/bin/bun run start
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# The application only writes SQLite, WAL/SHM files, and uploads under data/.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/panceg/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=panceg
+
+[Install]
+WantedBy=multi-user.target

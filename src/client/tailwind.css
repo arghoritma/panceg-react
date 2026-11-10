@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/* Map dark mode to [data-theme="dark"] (boilerplate convention). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Bridge existing CSS variables (defined in styles.css) to Tailwind theme
+   tokens. `inline` means utilities compile to var(--token) so dark mode
+   auto-switches at runtime without duplicating values. */
+@theme inline {
+	--color-bg: var(--bg);
+	--color-surface: var(--surface);
+	--color-border: var(--border);
+	--color-text: var(--text);
+	--color-muted: var(--muted);
+	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-primary-soft: var(--primary-soft);
+	--color-danger: var(--danger);
+	--color-success: var(--success);
+	--radius: var(--radius);
+	--shadow-card: var(--shadow);
+	--font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+		"Helvetica Neue", Arial, sans-serif;
+}
+
+/* --- Button utilities --------------------------------------------------- */
+/* `btn` + a variant is the only multi-property shorthand in the design
+   system; every other style is a plain utility class in the component.
+   Declared here (not styles.css) because `@utility` is a Tailwind v4
+   directive — styles.css holds only tokens and keyframes. */
+
+@utility btn {
+	@apply inline-flex items-center justify-center gap-1.5 px-4 py-2.5
+		rounded-xl border font-semibold text-sm cursor-pointer
+		transition-colors hover:no-underline
+		disabled:opacity-60 disabled:cursor-not-allowed;
+}
+
+@utility btn-primary {
+	@apply border-primary bg-primary text-white
+		hover:bg-primary-hover hover:border-primary-hover;
+}
+
+@utility btn-ghost {
+	@apply border-border bg-transparent text-text hover:bg-primary-soft;
+}
+
+/* --- Base layer --------------------------------------------------------- */
+
+@layer base {
+	body {
+		@apply bg-bg text-text font-sans antialiased leading-normal;
+		margin: 0;
+	}
+
+	a:hover {
+		text-decoration: underline;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--primary);
+		outline-offset: 2px;
+	}
+}

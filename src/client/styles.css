@@ -1,0 +1,63 @@
+/* ---------------------------------------------------------------------------
+   Panceg — design tokens + keyframes only.
+   All component styling is done via Tailwind utility classes in the React
+   components. This file defines the CSS custom properties that Tailwind's
+   @theme inline (in tailwind.css) bridges to utility tokens, plus two
+   @keyframes that cannot be expressed as utilities.
+
+   Light/dark via [data-theme] on <html> (set by an inline head script to
+   avoid FOUC; toggled by the dashboard topbar). Defaults to light.
+--------------------------------------------------------------------------- */
+
+:root,
+[data-theme="light"] {
+	color-scheme: light;
+	--bg: #faf7f0;
+	--surface: #fffdf8;
+	--border: #e7dbc4;
+	--text: #332719;
+	--muted: #766754;
+	--primary: #b7791f;
+	--primary-hover: #8f5e1b;
+	--primary-soft: #fff3d6;
+	--danger: #dc2626;
+	--success: #16a34a;
+	--radius: 12px;
+	--shadow:
+		0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -8px rgb(16 24 40 / 0.12);
+}
+
+[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #1d1610;
+	--surface: #292015;
+	--border: #4d3b27;
+	--text: #f8edda;
+	--muted: #c4af91;
+	--primary: #e0a644;
+	--primary-hover: #f2c365;
+	--primary-soft: #3a2a13;
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
+
+/* --- Keyframes (cannot be Tailwind utilities) ---------------------------- */
+
+@keyframes menu-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}

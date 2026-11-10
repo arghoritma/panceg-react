@@ -1,0 +1,276 @@
+# AGENTS.md
+
+Guidelines for AI coding agents working on this repository. Read this before
+writing, moving, or restructuring code. The README documents features in
+depth; this file exists to keep new code structurally consistent — previous
+contributions broke the architecture by inventing their own layout.
+
+## Stack
+
+- **Bun >= 1.4** — runtime, bundler, and test runner.
+- **Hono 4.x** (HTTP). Stable, runtime-agnostic; served via `Bun.serve` with
+  `app.fetch` (Bun hands the server to fetch as its 2nd arg → `c.env`).
+- **bun:sqlite** — synchronous, zero-ORM. Connection lifecycle and migrations
+  live in `src/db/`; prepared queries are grouped by domain in
+  `src/server/repo/`.
+- **Inertia v3 + React 19** — in-process SSR; page registry in
+  `src/client/pages.ts` with explicit imports.
+- **Tailwind CSS v4** — utility classes in components; `@tailwindcss/cli` as a
+  pre-build step (no PostCSS). Design tokens via CSS variables in
+  `src/client/styles.css`, bridged to Tailwind via `@theme inline` in
+  `src/client/tailwind.css` (see README "Styling").
+
+## Layout
+
+```
+src/
+├── index.ts                # entry: build assets (dev), Bun.serve, graceful shutdown
+├── api.ts                  # standalone API server entry (API_PORT, bearer-token auth)
+├── db/
+│   ├── index.ts            # SQLite connection, pragmas, migration bootstrap
+│   ├── migrations.ts       # migration runner and ERD generation
+│   └── migrations/         # versioned SQL schema files
+├── server/
+│   ├── app.ts              # composition: middleware order, onError, notFound, routes
+│   ├── api.ts              # API server composition: JSON only, no Inertia/SSR
+│   ├── configs/            # validated environment configuration
+│   ├── middlewares/        # Hono request middleware only
+│   ├── platform/           # Inertia adapter, observability, SSR helpers
+│   ├── repo/               # prepared parameterized SQL statements by domain
+│   ├── services/           # auth, mail, storage, assets, logging
+│   ├── utils/              # small stateless helpers (validation)
+│   └── routes/
+│       ├── api.routes.ts          # /api/session (user identity for public pages)
+│       ├── auth.routes.ts         # /login /register /logout /forgot-password /reset-password (GET+POST)
+│       ├── google-oauth.routes.ts # /auth/google, /auth/google/callback
+│       ├── pages.routes.ts        # app-shell pages: / (public cacheable), /dashboard, /admin
+│       ├── profile.routes.ts      # /profile page + /profile/avatar
+│       ├── tokens.routes.ts       # /tokens page: create/revoke API bearer tokens
+│       ├── uploads.routes.ts      # /uploads* (tus protocol)
+│       └── apis/v1.routes.ts      # /v1* (standalone API server, bearer-token auth)
+├── client/                 # React + Inertia (pages/, components/, styles.css)
+├── shared/                 # types.ts, inertia.d.ts (client+server shared)
+└── tests/                  # bun:test E2E suite (in-memory DB)
+```
+
+## Hard rules
+
+1. **Routes live in `src/server/routes/<feature>.routes.ts`, handlers inline,
+   one file per URL.** Route-specific handler logic stays in the route file
+   (see `auth.routes.ts`, `uploads.routes.ts`); never create a `routes.ts`
+   inside a feature folder. The feature name is derived from the URL, and
+   every URL is defined in exactly one file — GET renders and POST actions
+   live together (see "Route conventions" below).
+2. **Respect server module boundaries.** `routes/` owns URL namespaces and
+   inline handlers; `middlewares/` contains reusable Hono request middleware;
+   `services/` owns persistence, external I/O, and domain operations;
+   `platform/` owns framework/build/observability adapters; `utils/` contains
+   small stateless helpers; and `configs/` contains validated configuration.
+   Do not create feature subfolders or catch-all folders without a concrete
+   cross-route reuse case.
+3. **Keep database responsibilities split by the existing boundary.**
+   `src/db/index.ts` owns the connection, SQLite pragmas, and migration
+   bootstrap. `src/server/repo/*.ts` owns prepared, parameterized queries,
+   grouped by domain. Schema changes are new numbered files in
+   `src/db/migrations/`. New migrations use `000N_name.sql` with exact
+   `-- up` and `-- down` marker lines; the body uses valid SQLite SQL and
+   `--` comments. `createMigration()` belongs in `src/db/migrations.ts`; CLI
+   scripts only parse arguments and invoke it. Never edit an applied migration.
+4. **Env is read and validated in `configs/index.ts`.** Do not add direct
+   `process.env` reads to application modules; use `config` instead. Entrypoint
+   and test-bootstrap exceptions must be explicit and documented. Adding a
+   config key means updating `configs/index.ts`, `.env.example`, and the README
+   env table.
+5. **Validation via TypeBox schemas** (`src/server/utils/validation.ts`) at the
+   route level; `app.onError` maps `ValidationFailed` to Inertia 422 page
+   payloads (`VALIDATION_MESSAGES` in `auth.routes.ts`).
+6. **TypeScript**: `strict` + `noUncheckedIndexedAccess` +
+   `verbatimModuleSyntax` are on. Type-only imports MUST use `import type`.
+   No ORM, no loose `any`; queries are parameterized.
+7. **UI work follows the design system — never invents a parallel one.**
+   Before creating or editing UI, read `.llm-wiki/wiki/concepts/ui-design-principles.md`
+   and `ui-anti-patterns.md`. Reuse tokens from `styles.css` / `tailwind.css`
+   and existing components; don't reach for AI-default aesthetics (beige,
+   ghost cards, purple gradients, italic serif accents). New styling = new
+   utility classes in the component, per the Tailwind conventions below.
+   Forms use `useForm` + `<form>` from `@inertiajs/react` — see
+   `.llm-wiki/wiki/concepts/concept-inertia-form-patterns.md` for the
+   decision rule and examples.
+
+## Route conventions
+
+- **File = URL namespace.** `/posts*` routes live in `routes/posts.routes.ts`
+  with page renders and form actions together. Given a URL, the file name
+  follows from its first segment — that is the discoverability contract.
+- **`pages.routes.ts` is the app shell only** (/, /dashboard, /admin). New
+  feature pages do not go there.
+- **Infra endpoints** (`/health`, `/assets/*`) stay in `app.ts`, not route
+  files.
+- **Exports**: `const <feature>Routes = () => new Hono<AppEnv>()...`, mounted
+  via `app.route('/', <feature>Routes())` in `app.ts`. Route factories take
+  no arguments — the Inertia adapter is a global middleware on the app, not
+  per-route state.
+
+## Upload protocols
+
+Two upload protocols coexist in this boilerplate:
+
+1. **Regular upload (multipart/form-data)** — for files ≤ 100 MB.
+   `POST /profile/avatar` accepts a `FormData` with an `avatar` field.
+   The image is decoded, resized to 256×256 (`fit: "inside"`), and
+   re-encoded to WebP (quality 80) with `Bun.Image` (`import { Image } from "bun"` — not the global `Bun.Image`, which is `undefined` in
+   server context) before storage. Hono's `formData()` returns `Blob`,
+   not `File` — use `instanceof Blob`. Stored via `writeBytes` +
+   `insertUpload`, served from `/uploads/<id>` as `image/webp`.
+2. **tus protocol v1** at `/uploads` — for resumable chunked uploads of
+   files > 100 MB where a plain multipart request would be unreliable.
+   Implements creation, creation-with-upload, termination, expiration,
+   and checksum extensions. See `tus-protocol.ts`, `tus-storage.ts`,
+   and `uploads.routes.ts`.
+
+## CDN cache pattern (public vs auth pages)
+
+The app distinguishes **public pages** (cacheable at the Cloudflare edge)
+from **auth pages** (private, never cached). This is the core optimisation
+that lets a single Bun process serve high traffic — CF absorbs 90%+ of
+reads.
+
+### Public pages
+
+- Rendered with `{ public: true }` in the Inertia adapter: `auth.user` and
+  `flash` are omitted from the page props, so the HTML is identical for
+  all visitors.
+- Wrapped in `cacheablePublic(sMaxAge, swr)` middleware → sets
+  `Cache-Control: public, s-maxage=N, stale-while-revalidate=M` on 200
+  HTML responses (Inertia XHR excluded).
+- SSR runs even for logged-in users (the HTML is user-agnostic).
+- User identity is fetched client-side via `GET /api/session` after
+  hydration — see `src/client/session.ts` (`useSession()` hook).
+- Example: `/` (Home page).
+
+### Auth pages
+
+- Rendered normally (with `auth.user` in Inertia props).
+- No `Cache-Control` header set (browser default = no caching). Add
+  `noStore` middleware explicitly if needed.
+- SSR is skipped for logged-in users (no SEO benefit; ship empty shell).
+- User identity comes from Inertia props directly — no `/api/session`
+  fetch needed.
+- Example: `/dashboard`, `/admin`, `/profile`, `/login`, `/register`.
+
+### SPA cache-key separation
+
+Inertia XHR navigations carry `X-Inertia: true` and are excluded from the
+public cache header. The client also appends `?_spa=1` to XHR URLs (see
+`app.ts`) so Cloudflare caches JSON and HTML under separate cache keys.
+After navigation, the param is stripped from the address bar.
+
+### When to use which pattern
+
+Use **public** (`{ public: true }` + `cacheablePublic`) for any page that
+should be cacheable: landing, content, search, about. The page must not
+rely on `auth.user` for its initial render — use `useSession()` instead.
+
+Use **auth** (default Inertia props) for any page behind `requireAuth` or
+`requireRole`: dashboard, admin, profile, settings. These pages are
+private and always receive user data via Inertia props.
+
+## Hono integration notes (do not "fix")
+
+- Middleware runs in registration order; global `app.use()` middleware must
+  precede the routes they cover.
+- Middleware/guards MUST call `next()` to continue the chain — returning
+  `undefined` without `next()` errors with "Context is not finalized".
+- Hono converts HEAD → GET (body stripped, headers kept) but `c.req.method`
+  still reports "HEAD"; tus `dispatch` relies on this.
+- `c.header()`-queued headers are dropped when a handler returns a custom
+  `Response` — cookie helpers append to `c.res.headers` instead.
+- The `/*` wildcard produces no named param — derive path segments from
+  `c.req.path` (see `uploads.routes.ts`).
+- `hono/conninfo`'s ESM build is an empty stub in 4.13 — the rate limiter
+  reads the peer IP from `c.env` (the Bun server) instead.
+- `@sinclair/typebox` does not pre-register string formats — `email` is
+  registered in `validation.ts`; add others there.
+- The Web `CompressionStream` API is NOT reliably available in every Bun
+  1.3.14 context — compression uses `node:zlib` (`compress.ts`), and any
+  future code should avoid relying on Web compression globals.
+
+## Testing
+
+- Run **`bun test --isolate`** (or `bun run test`). NEVER plain `bun test`:
+  bun 1.3 runs all test files in one shared process, but each suite sets its
+  env in `beforeAll` and calls `db.close()` in `afterAll` as if process-
+  isolated. Without `--isolate`, one file's teardown finalizes the next
+  file's prepared statements and cached `config` values leak across files.
+- New test files must set env (`DATABASE_PATH=:memory:`, `UPLOAD_DIR`, …)
+  in `beforeAll` BEFORE importing the app module — mirror
+  `tests/app.test.ts` and `tests/tus.test.ts`.
+- Suite must stay green: run `bun run typecheck` and
+  `bun run test` before finishing. `tsc` only covers `src/` and `scripts/`.
+
+## Dev server
+
+AI agents use the lifecycle manager (`scripts/dev.ts`), not raw `bun --watch`.
+Human developers use `bun run dev` (foreground) — agents use `dev:background`.
+
+- **Start:** `bun run dev:background` — runs the server detached in the background,
+  lock file at `.panceg/dev.json` (PID, port, URL). The "Server ready"
+  output appears when the server is ready — wait for it before testing.
+- **Check status:** `bun run dev:status` — checks whether the server is alive, port, PID, last 3
+  log lines. Use this after a watch reload to confirm the restart finished.
+- **Check logs:** `bun run dev:logs` (last 50 lines) or
+  `bun run scripts/dev.ts logs --follow` (tail -f style, blocking).
+- **Stop:** `bun run dev:stop` — graceful SIGTERM, fallback SIGKILL, removes
+  lock file.
+- **Manual restart:** `bun run dev:restart` (stop + background). ONLY when:
+  (1) server crash/hang, (2) `.env` edited (env is read at startup, watch
+  does not reload env), (3) files outside `src/` edited that are not watched.
+- **DO NOT restart** after editing code in `src/` — `bun --watch` already
+  auto-restarts. Wait 2-3 seconds, then `bun run dev:status` to confirm.
+- **DO NOT use `hub op:start`** — hub-spawned processes do not pick up
+  `bun --watch` reloads correctly (stale code keeps running, bugs that are hard
+  to debug).
+- **If the user already started the server themselves:** leave it alone. Do not stop,
+  restart, or start a second one. Use `bun run dev:status`
+  to detect it, or ask the user for the port.
+- **Standalone API server:** `bun run dev:api` (port `API_PORT`, default 4001)
+  is a separate process outside the lifecycle manager above — start it only
+  when the task needs it, and stop it when done. Same `DATABASE_PATH`; it is
+  tested in-process via `createApiApp().request()`, no live server required.
+
+## Browser testing
+
+- When testing in the browser, ALWAYS open the browser console (DevTools →
+  Console) and check for errors/warnings. Client-side runtime errors
+  (failed imports, React runtime errors, hydration issues, bad Inertia
+  props, network 4xx/5xx on XHR) do NOT show up in `bun run typecheck` or
+  the build — the build compiles, the page renders, and the bug is silent
+  until you read the console. A green build + green tests does NOT mean the
+  page works; the console is the source of truth for client-side failures.
+- Use the `browser` tool (`xd://browser`) to drive a real tab and read
+  `console` output, or screenshot DevTools. Do not declare a UI change
+  verified without having read the console for the page you changed.
+
+## Style
+
+- **Styling is done with Tailwind utility classes** in React components
+  (`className="flex items-center gap-2 …"`). Do NOT write component CSS in
+  `src/client/styles.css` — that file holds only design-token CSS variables
+  and `@keyframes`. Preserve an existing component's co-located CSS pattern;
+  otherwise prefer utilities in the component.
+- Design tokens (`--primary`, `--surface`, `--border`, …) are defined in
+  `src/client/styles.css` and bridged to Tailwind theme tokens via
+  `@theme inline` in `src/client/tailwind.css`. Use the token-based
+  utilities (`bg-surface`, `text-primary`, `border-border`, `text-muted`,
+  `bg-primary-soft`, etc.) so dark mode auto-switches via `var()`.
+- Dark mode uses `[data-theme="dark"]` on `<html>` (not
+  `prefers-color-scheme`). Use the `dark:` variant for one-off dark-only
+  overrides: `dark:bg-green-950 dark:text-green-300`.
+- `@keyframes` that cannot be expressed as utilities live in `styles.css`
+  and are referenced via `animate-[name_duration_ease]`.
+- Match the repo's current style: 2-space indent, double quotes, semicolons
+  (normalized by the editor/agent formatter; `tests/` and the route files are
+  the reference). When editing an existing file, match that file's
+  formatting.
+- Keep changes minimal and conventional; delete dead code rather than
+  leaving shims or aliases behind a rename.

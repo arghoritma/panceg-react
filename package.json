@@ -1,0 +1,49 @@
+{
+  "name": "panceg",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Panceg is a solid full-stack foundation: Hono + bun:sqlite + Inertia v3 (React 19) with auth, roles, SSR, Tailwind v4, migrations, tests and Docker.",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "private": true,
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "dev:api": "bun --watch src/api.ts",
+    "dev:css": "bunx @tailwindcss/cli -i src/client/tailwind.css -o src/client/.tailwind.css --watch",
+    "dev:background": "bun run scripts/dev.ts background",
+    "dev:status": "bun run scripts/dev.ts status",
+    "dev:stop": "bun run scripts/dev.ts stop",
+    "dev:logs": "bun run scripts/dev.ts logs",
+    "dev:restart": "bun run dev:stop && bun run dev:background",
+    "build": "bun run scripts/build.ts",
+    "start": "NODE_ENV=production bun run src/index.ts",
+    "start:api": "NODE_ENV=production bun run src/api.ts",
+    "db:seed": "bun run scripts/seed.ts",
+    "db:make": "bun run scripts/create-migration.ts",
+    "db:migrate": "MIGRATIONS_MODE=cli bun run scripts/migrate.ts up",
+    "db:status": "MIGRATIONS_MODE=cli bun run scripts/migrate.ts status",
+    "db:rollback": "MIGRATIONS_MODE=cli bun run scripts/migrate.ts down",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src tests scripts",
+    "test": "bun test --isolate"
+  },
+  "dependencies": {
+    "@inertiajs/react": "^3.6.1",
+    "@sinclair/typebox": "^0.34.52",
+    "hono": "^4.13.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/bun": "^1.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

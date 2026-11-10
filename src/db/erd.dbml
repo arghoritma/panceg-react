@@ -1,0 +1,92 @@
+// Generated from the migrated SQLite schema. Do not edit manually.
+
+Table api_tokens {
+  id text [pk]
+  user_id text [not null]
+  name text [not null]
+  token_hash text [unique, not null]
+  token_prefix text [not null]
+  expires_at text
+  revoked_at text
+  last_used_at text
+  created_at text [not null]
+
+  indexes {
+    user_id [name: 'idx_api_tokens_user_id']
+  }
+}
+
+Table email_verifications {
+  token_hash text [pk]
+  user_id text [not null]
+  expires_at text [not null]
+  created_at text [not null]
+
+  indexes {
+    user_id [name: 'idx_email_verifications_user_id']
+  }
+}
+
+Table password_resets {
+  email text [not null]
+  token_hash text [pk]
+  expires_at text [not null]
+  created_at text [not null]
+
+  indexes {
+    email [name: 'idx_password_resets_email']
+  }
+}
+
+Table sessions {
+  token_hash text [pk]
+  user_id text [not null]
+  flash text [not null]
+  expires_at text [not null]
+  created_at text [not null]
+
+  indexes {
+    user_id [name: 'idx_sessions_user_id']
+  }
+}
+
+Table uploads {
+  id text [pk]
+  upload_length integer [not null]
+  offset integer [not null]
+  metadata text [not null]
+  user_id text
+  path text [not null]
+  created_at text [not null]
+  expires_at text
+
+  indexes {
+    expires_at [name: 'idx_uploads_expires_at', note: 'partial index']
+    user_id [name: 'idx_uploads_user_id']
+  }
+}
+
+Table users {
+  id text [pk, not null]
+  name text [not null]
+  email text [unique, not null]
+  password_hash text [not null]
+  role text [not null]
+  google_id text
+  avatar_url text
+  created_at text [not null]
+  email_verified integer [not null]
+
+  indexes {
+    email [unique, name: 'idx_users_email']
+    google_id [unique, name: 'idx_users_google_id', note: 'partial index']
+  }
+}
+
+Ref: api_tokens.user_id > users.id
+
+Ref: email_verifications.user_id > users.id
+
+Ref: sessions.user_id > users.id
+
+Ref: uploads.user_id > users.id

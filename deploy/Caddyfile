@@ -1,0 +1,7 @@
+# Replace app.example.com before copying this file to /etc/caddy/Caddyfile.
+# Caddy obtains and renews TLS certificates automatically.
+app.example.com {
+  encode zstd gzip
+
+  reverse_proxy 127.0.0.1:4000
+}
